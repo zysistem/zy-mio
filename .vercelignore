@@ -1,0 +1,8 @@
+node_modules
+.git
+.env
+*.log
+test.js
+test_one_proxy.js
+test_proxies_details.js
+scratch/
