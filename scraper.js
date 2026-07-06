@@ -501,6 +501,9 @@ async function scrapeIframe(iframeSrc) {
     log.debug(`Found ${result.subtitles.length} subtitles`);
 
     // Method 1: Try sandboxed VM JavaScript execution (highly dynamic & future-proof)
+    // The site rotates random function names, magic numbers, and cipher shifts on every deploy.
+    // We run ALL scripts in a shared VM context so function definitions and variable assignments
+    // (which live in different <script> blocks) can see each other.
     try {
         const scripts = [];
         $('script').each((i, el) => {
@@ -526,74 +529,50 @@ async function scrapeIframe(iframeSrc) {
             scripts.push(text);
         });
 
-        // Search for any array-of-strings function call
-        // Regex: functionName(["...", "..."])
-        const callRegex = /(\w+)\(\s*\[\s*((?:(?:"[^"]*"|'[^']*')\s*,\s*)*(?:"[^"]*"|'[^']*'))\s*\]\s*\)/;
-        let targetFuncName = null;
-        let targetParts = null;
-        let scriptWithDefinition = null;
-
-        for (const script of scripts) {
-            const match = script.match(callRegex);
-            if (match) {
-                const fnName = match[1];
-                const excluded = ['$', 'jQuery', 'jwplayer', 'parseInt', 'atob', 'btoa', 'alert', 'setTimeout', 'setInterval', 'Buffer', 'Array'];
-                if (excluded.includes(fnName)) continue;
-
-                const partsStr = match[2];
-                try {
-                    const jsonStr = '[' + partsStr.replace(/'/g, '"') + ']';
-                    const parts = JSON.parse(jsonStr);
-                    
-                    const defRegex = new RegExp(`function\\s+${fnName}\\b|${fnName}\\s*=\\s*function`);
-                    const defScript = scripts.find(s => defRegex.test(s));
-
-                    if (defScript) {
-                        targetFuncName = fnName;
-                        targetParts = parts;
-                        scriptWithDefinition = defScript;
-                        break;
-                    }
-                } catch (e) {
-                    log.debug(`Failed parsing parts for ${fnName}: ${e.message}`);
-                }
-            }
-        }
-
-        // Run in VM
+        // Build a shared VM sandbox with browser-like globals
         const sandbox = {
             atob: (str) => Buffer.from(str, 'base64').toString('binary'),
             btoa: (str) => Buffer.from(str, 'binary').toString('base64'),
+            Math,
+            String,
+            parseInt,
+            parseFloat,
+            console: { log: () => {}, warn: () => {}, error: () => {} },
+            // Stub out DOM/browser APIs so scripts don't throw
+            document: { getElementById: () => null, querySelector: () => null },
+            window: {},
+            jwplayer: () => ({ setup: (cfg) => { sandbox._jwSetup = cfg; } }),
         };
+        sandbox.window = sandbox;
         const context = vm.createContext(sandbox);
 
-        // Run all scripts containing decryption code in context
+        // Run ALL non-empty scripts in the shared context.
+        // Function definitions and their callers live in different <script> blocks,
+        // so we need a single shared context across all of them.
         for (const script of scripts) {
-            if (script.includes('dc_') || script.includes('function dc_') || (targetFuncName && script.includes(targetFuncName))) {
-                try {
-                    vm.runInContext(script, context);
-                } catch (e) {
-                    log.debug(`VM script definition failed/partial: ${e.message}`);
-                }
-            }
-        }
-
-        // Try executing the matched function
-        if (targetFuncName && targetParts) {
+            if (!script.trim()) continue;
             try {
-                const decVal = context[targetFuncName](targetParts);
-                if (isValidVideoUrl(decVal)) {
-                    result.videoUrl = decVal;
-                    log.info(`Video URL decrypted dynamically via VM: ${result.videoUrl.substring(0, 80)}...`);
-                }
+                vm.runInContext(script, context);
             } catch (e) {
-                log.debug(`Failed to execute matched decryption function in VM: ${e.message}`);
+                // Many scripts will partially fail (DOM ops, etc.) — that's fine.
+                log.debug(`VM script run error (partial ok): ${e.message.substring(0, 80)}`);
             }
         }
 
-        // Fallback: Scan all variables in context for a valid video URL
+        // Priority 1: Video URL from JWPlayer setup (most reliable)
+        if (context._jwSetup && context._jwSetup.sources) {
+            for (const src of context._jwSetup.sources) {
+                if (isValidVideoUrl(src.file)) {
+                    result.videoUrl = src.file;
+                    log.info(`Video URL from JWPlayer setup: ${result.videoUrl.substring(0, 80)}...`);
+                    break;
+                }
+            }
+        }
+
+        // Priority 2: Scan all context variables for a valid video URL
         if (!result.videoUrl) {
-            log.debug('Matched function decryption failed, scanning context variables...');
+            log.debug('Scanning VM context variables for video URL...');
             for (const key of Object.keys(context)) {
                 try {
                     const val = context[key];
@@ -603,25 +582,6 @@ async function scrapeIframe(iframeSrc) {
                         break;
                     }
                 } catch {}
-            }
-        }
-
-        // Fallback 2: Scan all scripts for variable names assigned to dc_ function and read them
-        if (!result.videoUrl) {
-            for (const script of scripts) {
-                const matches = script.matchAll(/(?:var|let|const)?\s*(\w+)\s*=\s*(?:dc_\w+|\w+)\s*\(/g);
-                for (const match of matches) {
-                    const varName = match[1];
-                    try {
-                        const val = context[varName];
-                        if (isValidVideoUrl(val)) {
-                            result.videoUrl = val;
-                            log.info(`Video URL found via fallback assignment scan (${varName}): ${result.videoUrl.substring(0, 80)}...`);
-                            break;
-                        }
-                    } catch {}
-                }
-                if (result.videoUrl) break;
             }
         }
 

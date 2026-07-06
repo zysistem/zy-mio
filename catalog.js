@@ -91,11 +91,12 @@ async function scrapeCatalogPage(url, type, year = null, limit = 50) {
             const cleanTitle = title.replace(/\s*izle\s*$/i, '').trim();
             if (!cleanTitle) return;
 
-            // Build slug-based ID from URL
+            // Build slug-based ID from URL — prefix with 'hdfc:' so Stremio's
+            // idPrefixes filter lets them through to the stream handler
             const slug = href.replace(BASE_URL, '').replace(/^\//, '').replace(/\/$/, '');
 
             items.push({
-                id: slug,
+                id: `hdfc:${slug}`,
                 type: isSeries ? 'series' : 'movie',
                 name: cleanTitle,
                 poster: poster.startsWith('http') ? poster : (poster ? BASE_URL + poster : ''),
