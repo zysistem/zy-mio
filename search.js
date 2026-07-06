@@ -456,5 +456,6 @@ async function findContent(type, imdbId, season = null, episode = null) {
 module.exports = {
     findContent,
     searchOnSite,
-    isValidImdbId
+    isValidImdbId,
+    fetchWithRetry
 };

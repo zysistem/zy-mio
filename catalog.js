@@ -8,9 +8,9 @@
  * @module catalog
  */
 
-const { fetch } = require('undici');
 const cheerio = require('cheerio');
 const { createLogger } = require('./logger');
+const { fetchWithRetry } = require('./search');
 
 const log = createLogger('Catalog');
 
@@ -34,17 +34,12 @@ async function scrapeCatalogPage(url, type, year = null, limit = 50) {
     try {
         log.info(`Scraping catalog: ${url} (type=${type}, year=${year || 'all'})`);
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 15000);
-
-        const response = await fetch(url, {
-            headers: defaultHeaders,
-            signal: controller.signal
+        const response = await fetchWithRetry(url, {
+            headers: defaultHeaders
         });
-        clearTimeout(timeoutId);
 
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+        if (!response) {
+            throw new Error(`Failed to fetch catalog page: ${url}`);
         }
 
         const html = await response.text();
@@ -154,8 +149,7 @@ async function getLatestSeries() {
  */
 async function getMoviesByYear(year) {
     return getCachedCatalog(`movies_${year}`, async () => {
-        // Homepage has all movies - filter by year from page content
-        return scrapeCatalogPage(BASE_URL + '/', 'movie', year, 60);
+        return scrapeCatalogPage(BASE_URL + `/yil/${year}/`, 'movie', year, 60);
     });
 }
 

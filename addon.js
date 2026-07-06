@@ -27,7 +27,7 @@ const BASE_URL = process.env.BASE_URL || `http://localhost:${PORT}`;
 
 const manifest = {
     id: 'community.hdfilmcehennemi',
-    version: '1.3.0',
+    version: '1.3.1',
     name: 'HDFilmCehennemi',
     description: 'HDFilmCehennemi üzerinden film ve dizi izleyin. Türkçe dublaj ve altyazı desteği.',
     logo: 'https://www.hdfilmcehennemi.nl/favicon.ico',
