@@ -15,6 +15,7 @@ const express = require('express');
 const { fetch } = require('undici');
 const { getVideoAndSubtitles, toStremioStreams } = require('./scraper');
 const { findContent, isValidImdbId } = require('./search');
+const { getLatestMovies, getLatestSeries, getMoviesByYear } = require('./catalog');
 const { createLogger } = require('./logger');
 const { ContentNotFoundError, ScrapingError, ValidationError, NetworkError, TimeoutError } = require('./errors');
 
@@ -30,10 +31,15 @@ const manifest = {
     name: 'HDFilmCehennemi',
     description: 'HDFilmCehennemi üzerinden film ve dizi izleyin. Türkçe dublaj ve altyazı desteği.',
     logo: 'https://www.hdfilmcehennemi.nl/favicon.ico',
-    resources: ['stream'],
+    resources: ['stream', 'catalog'],
     types: ['movie', 'series'],
-    catalogs: [],
-    idPrefixes: ['tt'],
+    catalogs: [
+        { type: 'movie', id: 'latest_movies', name: 'Son Eklenen Filmler' },
+        { type: 'series', id: 'latest_series', name: 'Son Eklenen Diziler' },
+        { type: 'movie', id: 'movies_2025', name: '2025 Filmleri' },
+        { type: 'movie', id: 'movies_2026', name: '2026 Filmleri' },
+    ],
+    idPrefixes: ['tt', 'hdfc'],
     behaviorHints: {
         configurable: false,
         configurationRequired: false
@@ -50,22 +56,38 @@ builder.defineStreamHandler(async ({ type, id }) => {
     log.info(`Stream request: ${type} - ${id}`);
 
     try {
-        // Parse IMDb ID
-        const [imdbId, season, episode] = id.split(':');
+        // Parse ID (IMDb or HDFC slug)
+        const [rawId, season, episode] = id.split(':');
 
         // Validate input
-        if (!imdbId) {
-            log.warn('Missing IMDb ID');
+        if (!rawId) {
+            log.warn('Missing ID');
             return { streams: [] };
         }
 
-        if (!isValidImdbId(imdbId)) {
-            log.warn(`Invalid IMDb ID format: ${imdbId}`);
+        // Handle hdfc: prefixed IDs (series from catalog without IMDb ID)
+        if (rawId.startsWith('hdfc:')) {
+            const slug = rawId.replace('hdfc:', '');
+            const contentUrl = `https://www.hdfilmcehennemi.nl/${slug}`;
+            log.info(`HDFC slug request: ${slug} -> ${contentUrl}`);
+
+            try {
+                const result = await getVideoAndSubtitles(contentUrl);
+                const streams = toStremioStreams(result, slug, BASE_URL);
+                return streams;
+            } catch (error) {
+                log.warn(`HDFC slug failed: ${error.message}`);
+                return errorStream('İçerik Bulunamadı', 'Bu içerik HDFilmCehennemi\'de mevcut değil.');
+            }
+        }
+
+        if (!isValidImdbId(rawId)) {
+            log.warn(`Invalid IMDb ID format: ${rawId}`);
             return { streams: [] };
         }
 
         // Find content on HDFilmCehennemi
-        const content = await findContent(type, imdbId, season, episode);
+        const content = await findContent(type, rawId, season, episode);
 
         log.info(`Content found: ${content.url}`);
 
@@ -76,7 +98,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         const streams = toStremioStreams(result, content.title, BASE_URL);
 
         const elapsed = Date.now() - startTime;
-        log.info(`Returning ${streams.streams.length} stream(s) for ${imdbId} (${elapsed}ms)`);
+        log.info(`Returning ${streams.streams.length} stream(s) for ${rawId} (${elapsed}ms)`);
 
         return streams;
 
@@ -137,6 +159,42 @@ builder.defineStreamHandler(async ({ type, id }) => {
             'Bilinmeyen Hata',
             'Bir hata oluştu. Lütfen daha sonra tekrar deneyin.'
         );
+    }
+});
+
+/**
+ * Catalog handler - Browse categories (latest movies/series, by year)
+ */
+builder.defineCatalogHandler(async ({ type, id }) => {
+    log.info(`Catalog request: ${type} - ${id}`);
+
+    try {
+        let metas = [];
+
+        switch (id) {
+            case 'latest_movies':
+                metas = await getLatestMovies();
+                break;
+            case 'latest_series':
+                metas = await getLatestSeries();
+                break;
+            case 'movies_2025':
+                metas = await getMoviesByYear(2025);
+                break;
+            case 'movies_2026':
+                metas = await getMoviesByYear(2026);
+                break;
+            default:
+                log.warn(`Unknown catalog: ${id}`);
+                return { metas: [] };
+        }
+
+        log.info(`Catalog ${id}: ${metas.length} items`);
+        return { metas };
+
+    } catch (error) {
+        log.error(`Catalog error (${id}): ${error.message}`);
+        return { metas: [] };
     }
 });
 

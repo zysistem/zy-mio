@@ -25,3 +25,6 @@ Thumbs.db
 dist/
 build/
 .vercel
+
+# Test files
+test-catalog.js
