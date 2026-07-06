@@ -65,7 +65,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
             return { streams: [] };
         }
 
-        // Handle hdfc: prefixed IDs (series from catalog without IMDb ID)
+        // Handle hdfc: prefixed IDs (from catalog)
         if (rawId.startsWith('hdfc:')) {
             const slug = rawId.replace('hdfc:', '');
             const contentUrl = `https://www.hdfilmcehennemi.nl/${slug}`;
@@ -77,6 +77,21 @@ builder.defineStreamHandler(async ({ type, id }) => {
                 return streams;
             } catch (error) {
                 log.warn(`HDFC slug failed: ${error.message}`);
+                return errorStream('İçerik Bulunamadı', 'Bu içerik HDFilmCehennemi\'de mevcut değil.');
+            }
+        }
+
+        // Handle slug-based IDs (from catalog browse)
+        if (!rawId.startsWith('tt')) {
+            const contentUrl = `https://www.hdfilmcehennemi.nl/${rawId}`;
+            log.info(`Slug request: ${rawId} -> ${contentUrl}`);
+
+            try {
+                const result = await getVideoAndSubtitles(contentUrl);
+                const streams = toStremioStreams(result, rawId, BASE_URL);
+                return streams;
+            } catch (error) {
+                log.warn(`Slug request failed: ${error.message}`);
                 return errorStream('İçerik Bulunamadı', 'Bu içerik HDFilmCehennemi\'de mevcut değil.');
             }
         }
