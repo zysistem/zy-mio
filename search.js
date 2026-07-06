@@ -14,7 +14,7 @@ const { getWorkingProxy, markProxyBad, createProxyAgent, isProxyEnabled, isProxy
 
 const log = createLogger('Search');
 
-const BASE_URL = 'https://www.hdfilmcehennemi.nl';
+const BASE_URL = process.env.SITE_URL || 'https://www.hdfilmcehennemi.nl';
 
 // Configuration
 const CONFIG = {

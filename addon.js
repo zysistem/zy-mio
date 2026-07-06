@@ -30,7 +30,7 @@ const manifest = {
     version: '1.3.1',
     name: 'HDFilmCehennemi',
     description: 'HDFilmCehennemi üzerinden film ve dizi izleyin. Türkçe dublaj ve altyazı desteği.',
-    logo: 'https://www.hdfilmcehennemi.nl/favicon.ico',
+    logo: `${BASE_URL}/favicon.ico`,
     resources: ['stream', 'catalog'],
     types: ['movie', 'series'],
     catalogs: [
@@ -68,7 +68,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
         // Handle hdfc: prefixed IDs (from catalog)
         if (rawId.startsWith('hdfc:')) {
             const slug = rawId.replace('hdfc:', '');
-            const contentUrl = `https://www.hdfilmcehennemi.nl/${slug}`;
+            const contentUrl = `${BASE_URL}/${slug}`;
             log.info(`HDFC slug request: ${slug} -> ${contentUrl}`);
 
             try {
@@ -83,7 +83,7 @@ builder.defineStreamHandler(async ({ type, id }) => {
 
         // Handle slug-based IDs (from catalog browse)
         if (!rawId.startsWith('tt')) {
-            const contentUrl = `https://www.hdfilmcehennemi.nl/${rawId}`;
+            const contentUrl = `${BASE_URL}/${rawId}`;
             log.info(`Slug request: ${rawId} -> ${contentUrl}`);
 
             try {

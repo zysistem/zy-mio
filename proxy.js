@@ -45,7 +45,8 @@ const CONFIG = {
     cacheTTL: 10 * 60 * 1000, // 10 minutes
     testTimeout: 8000, // 8 seconds for proxy test
     maxProxiesToTest: 100, // Test all available proxies for fastest discovery
-    testUrl: 'https://www.hdfilmcehennemi.nl/' // URL to test proxies against
+    testUrl: process.env.SITE_URL || 'https://www.hdfilmcehennemi.nl/', // URL to test proxies against
+    customProxy: process.env.PROXY_URL || 'http://185.208.102.108:8080' // User requested proxy
 };
 
 // Proxy list cache - now stores objects with type info
@@ -209,6 +210,15 @@ async function getWorkingProxy() {
     if (CONFIG.proxyEnabled === 'never') {
         log.debug('Proxy disabled by configuration');
         return null;
+    }
+
+    // Always prioritize the user's custom proxy if defined!
+    if (CONFIG.customProxy) {
+        log.info(`🛠️ Using CUSTOM proxy: ${CONFIG.customProxy}`);
+        const url = new URL(CONFIG.customProxy);
+        const protocol = url.protocol.replace(':', '');
+        const address = url.host;
+        return { address, type: protocol };
     }
 
     // Return cached working proxy if available - no re-testing needed!

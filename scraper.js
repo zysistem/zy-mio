@@ -15,7 +15,7 @@ const { getWorkingProxy, markProxyBad, createProxyAgent, isProxyEnabled, isProxy
 
 const log = createLogger('Scraper');
 
-const BASE_URL = 'https://www.hdfilmcehennemi.nl';
+const BASE_URL = process.env.SITE_URL || 'https://www.hdfilmcehennemi.nl';
 const EMBED_BASE = 'https://hdfilmcehennemi.mobi';
 
 // Configuration
